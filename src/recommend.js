@@ -41,6 +41,7 @@ const minmax = (arr) => {
   const mn = Math.min(...arr), mx = Math.max(...arr), d = mx - mn || 1;
   return arr.map((v) => (v - mn) / d);
 };
+const uniq = (arr) => [...new Set(arr)]; // 같은 한글 라벨로 합쳐지는 태그 중복 제거
 
 export function recommend({ watched = [], answers = {}, catalog = [], count = 12, exclude = [], variety = 0.05 }) {
   const profile = buildTasteProfile(watched);
@@ -218,19 +219,19 @@ function buildRec(c, { libW, moodW, profile, answers, seedItem, seedW }) {
 
   const reasons = [];
   if (seedItem && seedW) {
-    const shared = c.tags.filter((t) => seedW.has(t)).slice(0, 2).map(koLabel);
+    const shared = uniq(c.tags.filter((t) => seedW.has(t)).map(koLabel)).slice(0, 2);
     reasons.push(shared.length ? `'${seedItem.title}'와(과) 비슷한 ${shared.join("·")} 작품이에요.` : `'${seedItem.title}'와(과) 결이 비슷해요.`);
   }
   const isExplore = answers.novelty === "new" && c.affinity === 0 && c.mood > 0;
   if (isExplore) reasons.push("평소 시청 목록과 다른 새로운 결이에요.");
   if (moodSum >= libSum && moodSum > 0) {
-    const moodTags = matched.filter((x) => x.mood > 0).slice(0, 2).map((x) => koLabel(x.t));
+    const moodTags = uniq(matched.filter((x) => x.mood > 0).map((x) => koLabel(x.t))).slice(0, 2);
     if (moodTags.length) reasons.push(`오늘 고른 분위기(${moodTags.join("·")})에 어울려요.`);
   }
   if (libSum > 0 && !isExplore) {
     const top = matched.find((x) => x.lib > 0);
     const ref = top && profile.topItem.get(top.t);
-    const tagsKo = matched.filter((x) => x.lib > 0).slice(0, 2).map((x) => koLabel(x.t));
+    const tagsKo = uniq(matched.filter((x) => x.lib > 0).map((x) => koLabel(x.t))).slice(0, 2);
     if (ref && ref.title) reasons.push(`'${ref.title}' 등 ${tagsKo.join("·")} 취향과 잘 맞아요.`);
     else if (tagsKo.length) reasons.push(`즐겨 본 ${tagsKo.join("·")} 성향이에요.`);
   }
@@ -251,8 +252,8 @@ function buildRec(c, { libW, moodW, profile, answers, seedItem, seedW }) {
     runtime: g.runtime || null,
     poster_path: g.poster_path || null,
     overview: g.overview || "",
-    matchTags: matched.slice(0, 5).map((x) => koLabel(x.t)),
-    tags: allTags.slice(0, 6).map(koLabel),
+    matchTags: uniq(matched.map((x) => koLabel(x.t))).slice(0, 5),
+    tags: uniq(allTags.map(koLabel)).slice(0, 6),
     reasons: reasons.slice(0, 2),
     netflix: `https://www.netflix.com/search?q=${encodeURIComponent(g.title)}`,
     tmdb: `https://www.themoviedb.org/${g.type}/${g.id}`,

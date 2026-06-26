@@ -8,7 +8,7 @@
 //
 // 시리즈는 에피소드마다 한 줄 → 묶으면 시청 횟수(count)가 곧 '몰입도(=플레이타임)'.
 
-import { getCatalog } from "./catalog.js";
+import { getCatalog, getById } from "./catalog.js";
 import { searchMulti, enrichDetails } from "./tmdb.js";
 
 const norm = (s = "") =>
@@ -33,11 +33,19 @@ function parseCsvLine(line) {
   return out;
 }
 
-// "Stranger Things: Season 4: ..." → "Stranger Things"
+// 콜론 구분 세그먼트 중 '시즌/에피소드 마커'가 나오기 전까지를 작품 제목으로 본다.
+// 콜론이 제목 일부인 경우("Avatar: The Last Airbender")는 유지하고,
+// "Stranger Things: Season 4: ..."는 "Stranger Things"로 자른다. (영어·한국어 마커 지원)
 const SEG_SPLIT = /:\s+/;
+const EP_MARKER = /^(Season|Part|Chapter|Episode|Episodes|Vol\.?|Volume|Pt\.?|Book|Limited Series|Series|시즌|파트|챕터|에피소드|볼륨|리미티드|\d+\s*화|\d+\s*부|\d+\s*권)/i;
 function baseTitle(raw) {
   const segs = String(raw).split(SEG_SPLIT);
-  return segs[0].trim();
+  const out = [segs[0]];
+  for (let i = 1; i < segs.length; i++) {
+    if (EP_MARKER.test(segs[i].trim())) break;
+    out.push(segs[i]);
+  }
+  return out.join(": ").trim();
 }
 
 function parseDate(s) {
@@ -88,31 +96,32 @@ function recencyMult(last) {
   return Math.max(0.4, Math.min(1, 1 - months / 48)); // 4년에 걸쳐 0.4까지 감쇠
 }
 
-// 카탈로그에서 제목(현지/원제)으로 매칭
-function matchInCatalog(catalog, base) {
-  const nb = norm(base);
-  if (!nb) return null;
-  for (const g of catalog) {
-    if (norm(g.title) === nb || norm(g.originalTitle || "") === nb) return g;
-  }
-  // 부분 포함(시드가 부제까지 포함된 경우) — 보수적으로 길이 비슷할 때만
+// 카탈로그 제목 인덱스(정규화된 제목/원제 -> 작품). 1회 구축해 O(1) 매칭.
+function buildTitleIndex(catalog) {
+  const idx = new Map();
   for (const g of catalog) {
     const a = norm(g.title), b = norm(g.originalTitle || "");
-    if ((a && nb.includes(a) && a.length > 4) || (b && nb.includes(b) && b.length > 4)) return g;
+    if (a && !idx.has(a)) idx.set(a, g);
+    if (b && !idx.has(b)) idx.set(b, g);
   }
-  return null;
+  return idx;
+}
+// 정확 일치만 사용(부분일치는 'money heist'⊃'heist' 같은 오매칭을 유발). 못 찾으면 온라인 검색이 보강.
+function matchInCatalog(index, base) {
+  const nb = norm(base);
+  return nb ? index.get(nb) || null : null;
 }
 
 // 시청기록 → 취향 항목 배열. key 있으면 미매칭분을 TMDB 검색으로 보강.
 export async function buildWatchedFromCsv(text, key) {
   const rows = parseHistoryCsv(text);
   const groups = groupByBase(rows);
-  const catalog = getCatalog();
+  const index = buildTitleIndex(getCatalog());
 
   const watched = [];
   const unmatched = [];
   for (const grp of groups) {
-    const hit = matchInCatalog(catalog, grp.base);
+    const hit = matchInCatalog(index, grp.base);
     if (hit) watched.push(toWatched(hit, grp));
     else unmatched.push(grp);
   }
@@ -140,15 +149,19 @@ export async function buildWatchedFromCsv(text, key) {
 
 async function resolveOnline(grp, key, seen) {
   const nb = norm(grp.base);
-  const results = await searchMulti(grp.base, key);
+  // 영어 제목 매칭을 위해 en-US 로 검색 (ko-KR 검색은 한국 작품을 영어 제목으로 못 찾음).
+  const results = await searchMulti(grp.base, key, "en-US");
   if (!results.length) return null;
-  // 제목이 정확히 일치하는 후보 우선, 없으면 가장 인기 있는 것
+  // 제목 정확 일치 우선, 없으면 TMDB 관련도 1순위. (인기순 재정렬 금지)
   let pick = results.find((r) => norm(r.title) === nb || norm(r.originalTitle) === nb)
-    || results.sort((a, b) => (b.popularity || 0) - (a.popularity || 0))[0];
+    || results[0];
   const dkey = `${pick.type}:${pick.id}`;
   if (seen.has(dkey)) return null;
   seen.add(dkey);
-  await enrichDetails(pick, key);
+  // 같은 id가 한국어 카탈로그에 있으면 그쪽(한글 제목·포스터·보강 완료)을 사용.
+  const inCatalog = getById(pick.type, pick.id);
+  if (inCatalog) return toWatched(inCatalog, grp);
+  await enrichDetails(pick, key); // 카탈로그 밖이면 직접 보강
   return toWatched(pick, grp);
 }
 

@@ -117,8 +117,12 @@ export function slugifyKeyword(name = "") {
 }
 
 // 멀티 검색(영화+시리즈) — 시드 선택 / 시청기록 매칭용.
-export async function searchMulti(query, key) {
-  const data = await tmdb(`/search/multi`, { query, include_adult: "false", page: "1" }, key);
+// lang: 매칭 정확도를 위해 영어 제목 매칭이 필요하면 "en-US" 전달.
+//       (ko-KR 로 검색하면 한국 작품이 영어 제목으로 검색되지 않음)
+export async function searchMulti(query, key, lang) {
+  const params = { query, include_adult: "false", page: "1" };
+  if (lang) params.language = lang;
+  const data = await tmdb(`/search/multi`, params, key);
   return (data.results || [])
     .filter((r) => r.media_type === "movie" || r.media_type === "tv")
     .map((r) => normalizeDiscover(r.media_type, r));
