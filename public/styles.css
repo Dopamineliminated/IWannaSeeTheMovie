@@ -53,6 +53,36 @@ body {
 .drop p { margin: 0; color: var(--text-dim); }
 .drop p b { color: var(--text); }
 
+/* 시작 선택지 (빠르게 고르기 / 시청기록) */
+.start-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.start-card {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center;
+  padding: 22px 16px; border-radius: var(--radius); cursor: pointer;
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--text); transition: all .15s;
+}
+.start-card:hover { border-color: #666; transform: translateY(-2px); }
+.start-card.primary { background: linear-gradient(160deg, #2a0a0c, #181819); border-color: var(--accent); }
+.start-card.primary:hover { box-shadow: 0 8px 24px rgba(229,9,20,.3); }
+.start-emoji { font-size: 1.8rem; }
+.start-t { font-weight: 700; color: #fff; font-size: 1.02rem; }
+.start-d { font-size: .8rem; color: var(--text-dim); }
+#csvArea { margin-top: 16px; }
+
+/* 빠르게 고르기 픽커 */
+.pick-count { color: var(--accent); }
+#pickSearch { margin: 14px 0 10px; }
+.pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; margin-bottom: 8px; }
+.pick-grid.hidden { display: none; }
+#pickSearchResults { background: #0e0e0f; border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
+.pick-tile { position: relative; border-radius: 8px; overflow: hidden; border: 2px solid transparent; cursor: pointer; background: var(--bg-2); transition: border-color .12s; }
+.pick-tile .poster { aspect-ratio: 2/3; }
+.pick-tile .pick-name { padding: 5px 6px; font-size: .72rem; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pick-tile:hover { border-color: #777; }
+.pick-tile.selected { border-color: var(--accent); }
+.pick-tile .check { position: absolute; top: 5px; right: 5px; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; display: none; align-items: center; justify-content: center; font-size: .8rem; font-weight: 900; box-shadow: 0 2px 8px rgba(0,0,0,.5); }
+.pick-tile.selected .check { display: flex; }
+.pick-tile.selected .poster img { opacity: .7; }
+
 .btn {
   border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
   padding: 11px 18px; border-radius: 6px; cursor: pointer; font-size: 0.95rem; font-weight: 600;

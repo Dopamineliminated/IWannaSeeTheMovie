@@ -16,17 +16,28 @@
 
     <!-- 1단계: 입력 -->
     <section id="intro" class="card">
-      <label class="field-label">넷플릭스 시청기록</label>
-      <div class="drop" id="drop">
-        <input id="fileInput" type="file" accept=".csv,text/csv" hidden />
-        <div class="drop-inner">
-          <div class="drop-icon">📄</div>
-          <p><b id="fileName">NetflixViewingHistory.csv</b> 를 여기에 끌어다 놓거나</p>
-          <button id="pickBtn" class="btn">파일 선택</button>
-        </div>
+      <div class="start-grid">
+        <button id="pickStartBtn" class="start-card primary">
+          <div class="start-emoji">🍿</div>
+          <div class="start-t">본 작품 골라서 시작</div>
+          <div class="start-d">포스터 몇 개만 탭하면 끝 · 가장 간편</div>
+        </button>
+        <button id="csvStartBtn" class="start-card">
+          <div class="start-emoji">📄</div>
+          <div class="start-t">시청기록으로 시작</div>
+          <div class="start-d">CSV 업로드 · 가장 정확</div>
+        </button>
       </div>
-      <div class="intro-foot">
-        <button id="demoBtn" class="btn ghost">🎲 데모로 먼저 체험하기</button>
+
+      <div id="csvArea" class="hidden">
+        <div class="drop" id="drop">
+          <input id="fileInput" type="file" accept=".csv,text/csv" hidden />
+          <div class="drop-inner">
+            <div class="drop-icon">📄</div>
+            <p><b id="fileName">NetflixViewingHistory.csv</b> 를 여기에 끌어다 놓거나</p>
+            <button id="pickBtn" class="btn">파일 선택</button>
+          </div>
+        </div>
         <details class="help">
           <summary>시청기록은 어떻게 받나요?</summary>
           <ul>
@@ -36,6 +47,25 @@
             <li id="apiKeyNote"></li>
           </ul>
         </details>
+      </div>
+
+      <div class="intro-foot">
+        <button id="demoBtn" class="btn ghost">🎲 데모로 먼저 체험하기</button>
+      </div>
+    </section>
+
+    <!-- 1-b단계: 빠르게 고르기 -->
+    <section id="picker" class="hidden">
+      <div class="card">
+        <h2 class="section-title">본 작품을 골라주세요</h2>
+        <p class="muted">즐겨 본·좋아하는 작품을 탭하세요. 많이 고를수록 정확해져요 (3개 이상 추천). <b id="pickCount" class="pick-count">0개 선택</b></p>
+        <input id="pickSearch" class="seed-input" type="text" placeholder="🔍 안 보이면 검색해서 추가 (예: 인셉션)" autocomplete="off" />
+        <div id="pickSearchResults" class="pick-grid hidden"></div>
+        <div id="pickGrid" class="pick-grid"></div>
+        <div class="action-row">
+          <button id="pickDoneBtn" class="btn primary large" disabled>✨ 추천 받기</button>
+          <button id="pickBackBtn" class="btn ghost">뒤로</button>
+        </div>
       </div>
     </section>
 

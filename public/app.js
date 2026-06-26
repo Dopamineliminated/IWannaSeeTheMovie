@@ -7,6 +7,7 @@ const state = {
   sessionKey: null,
   demo: false,
   csvText: null,
+  picks: null,
   answers: {},
   exclude: [],
 };
@@ -14,7 +15,7 @@ const state = {
 const esc = (s) => String(s == null ? "" : s)
   .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-function show(id) { for (const s of ["intro", "loading", "analysis", "results"]) $("#" + s).classList.toggle("hidden", s !== id); }
+function show(id) { for (const s of ["intro", "picker", "loading", "analysis", "results"]) $("#" + s).classList.toggle("hidden", s !== id); }
 let toastT;
 function toast(msg) {
   const t = $("#toast"); t.textContent = msg; t.classList.remove("hidden");
@@ -44,6 +45,8 @@ async function init() {
 // ---------- 1단계: 파일 업로드 / 데모 ----------
 function wireIntro() {
   const drop = $("#drop"), fileInput = $("#fileInput");
+  $("#pickStartBtn").onclick = openPicker;
+  $("#csvStartBtn").onclick = () => { $("#csvArea").classList.toggle("hidden"); };
   $("#pickBtn").onclick = () => fileInput.click();
   drop.onclick = (e) => { if (e.target.closest("button")) return; fileInput.click(); };
   fileInput.onchange = () => fileInput.files[0] && readFile(fileInput.files[0]);
@@ -63,10 +66,80 @@ function readFile(file) {
   reader.readAsText(file, "utf-8");
 }
 
+// ---------- 빠르게 고르기 (픽커) ----------
+let pickItems = [];          // 그리드에 보이는 후보들
+let pickSearchItems = [];    // 최근 검색 결과
+const pickSel = new Map();   // 선택된 key -> item
+
+function pickTileHtml(it) {
+  const sel = pickSel.has(it.key) ? " selected" : "";
+  return `<div class="pick-tile${sel}" data-key="${esc(it.key)}">
+    <div class="check">✓</div>${poster(it.poster_path, it.title)}
+    <div class="pick-name">${esc(it.title)}</div></div>`;
+}
+function renderPickGrid() {
+  const g = $("#pickGrid");
+  g.innerHTML = pickItems.map(pickTileHtml).join("");
+  g.querySelectorAll(".pick-tile").forEach((el) => (el.onclick = () => togglePick(el.dataset.key)));
+}
+function togglePick(key) {
+  if (pickSel.has(key)) pickSel.delete(key);
+  else {
+    const it = pickItems.find((x) => x.key === key) || pickSearchItems.find((x) => x.key === key);
+    if (it) pickSel.set(key, it);
+  }
+  renderPickGrid();
+  updatePickCount();
+}
+function updatePickCount() {
+  const n = pickSel.size;
+  $("#pickCount").textContent = `${n}개 선택`;
+  $("#pickDoneBtn").disabled = n < 1;
+  $("#pickDoneBtn").textContent = n >= 3 ? "✨ 추천 받기" : n >= 1 ? `✨ 추천 받기 (${3 - n}개 더 고르면 정확해져요)` : "✨ 추천 받기";
+}
+async function openPicker() {
+  show("picker");
+  pickSel.clear(); pickItems = []; updatePickCount();
+  $("#pickSearch").value = ""; $("#pickSearchResults").classList.add("hidden");
+  $("#pickGrid").innerHTML = '<p class="muted">불러오는 중…</p>';
+  try {
+    const r = await (await fetch("/api/popular?n=60")).json();
+    pickItems = r.results;
+    renderPickGrid();
+  } catch { $("#pickGrid").innerHTML = '<p class="muted">목록을 불러오지 못했어요. 검색으로 추가해 주세요.</p>'; }
+}
+function wirePickSearch() {
+  const input = $("#pickSearch"), box = $("#pickSearchResults");
+  let t;
+  input.addEventListener("input", () => {
+    clearTimeout(t);
+    const q = input.value.trim();
+    if (q.length < 1) { box.classList.add("hidden"); box.innerHTML = ""; return; }
+    t = setTimeout(async () => {
+      try {
+        const r = await (await fetch("/api/search?q=" + encodeURIComponent(q))).json();
+        pickSearchItems = r.results;
+        if (!r.results.length) { box.classList.add("hidden"); box.innerHTML = ""; return; }
+        box.innerHTML = pickSearchItems.map(pickTileHtml).join("");
+        box.classList.remove("hidden");
+        box.querySelectorAll(".pick-tile").forEach((el) => (el.onclick = () => {
+          const key = el.dataset.key;
+          const it = pickSearchItems.find((x) => x.key === key);
+          if (it && !pickItems.find((x) => x.key === key)) pickItems.unshift(it);
+          if (it) pickSel.set(key, it);
+          input.value = ""; box.classList.add("hidden"); box.innerHTML = "";
+          renderPickGrid(); updatePickCount();
+        }));
+      } catch { box.classList.add("hidden"); }
+    }, 220);
+  });
+}
+
 // ---------- 분석 ----------
 async function analyze(payload) {
   state.demo = !!payload.demo;
   state.csvText = payload.csv || null;
+  state.picks = payload.picks || null;
   $("#loadingText").textContent = state.demo ? "데모 시청기록을 분석하는 중…" : "시청기록을 분석하는 중…";
   show("loading");
   let data;
@@ -183,7 +256,7 @@ async function doRecommend(reset) {
   try {
     const res = await fetch("/api/recommend", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key: state.sessionKey, demo: state.demo, csv: state.csvText, answers: state.answers, exclude: state.exclude, count: 12 }),
+      body: JSON.stringify({ key: state.sessionKey, demo: state.demo, csv: state.csvText, picks: state.picks, answers: state.answers, exclude: state.exclude, count: 12 }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "추천 실패");
@@ -224,9 +297,12 @@ function renderResults(recs) {
 // ---------- 버튼 ----------
 function wire() {
   wireIntro();
+  wirePickSearch();
+  $("#pickDoneBtn").onclick = () => analyze({ picks: [...pickSel.keys()] });
+  $("#pickBackBtn").onclick = () => show("intro");
   $("#recommendBtn").onclick = () => doRecommend(true);
   $("#rerollBtn").onclick = () => doRecommend(false);
-  $("#resetBtn").onclick = () => { state.answers = {}; $("#drop").classList.remove("has-file"); $("#fileName").textContent = "NetflixViewingHistory.csv"; show("intro"); };
+  $("#resetBtn").onclick = () => { state.answers = {}; state.picks = null; pickSel.clear(); $("#csvArea").classList.add("hidden"); $("#drop").classList.remove("has-file"); $("#fileName").textContent = "NetflixViewingHistory.csv"; show("intro"); };
   $("#editBtn").onclick = () => show("analysis");
 }
 

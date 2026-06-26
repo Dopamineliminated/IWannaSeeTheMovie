@@ -37,6 +37,17 @@ function buildDemoWatched() {
   return out;
 }
 
+// '빠르게 고르기'로 선택한 작품들("type:id")로 취향을 만든다 (업로드 불필요).
+function buildWatchedFromPicks(picks) {
+  const out = [];
+  for (const k of picks || []) {
+    const [type, id] = String(k).split(":");
+    const item = getById(type, Number(id));
+    if (item) out.push(makeWatched(item, 4, Date.now())); // 고른 작품은 동등하게 '좋아함'으로 가중
+  }
+  return out;
+}
+
 // ---- 세션 캐시 (sessionKey -> watched) ----
 const cache = new Map();
 const TTL = 30 * 60 * 1000;
@@ -80,23 +91,42 @@ app.get("/api/search", (req, res) => {
   });
 });
 
+// '빠르게 고르기' 그리드용 인기작 (포스터 있는 것 우선, 영화·시리즈 섞어서)
+app.get("/api/popular", (req, res) => {
+  const n = Math.min(120, Number(req.query.n) || 60);
+  const cat = getCatalog().filter((g) => g.poster_path); // 포스터 있는 것만 (없으면 폴백)
+  const pool = cat.length >= n ? cat : getCatalog();
+  const sorted = [...pool].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+  res.json({
+    results: sorted.slice(0, n).map((g) => ({
+      key: `${g.type}:${g.id}`, title: g.title, year: g.year, type: g.type, poster_path: g.poster_path,
+    })),
+  });
+});
+
 // 1단계: 시청기록 분석 (데모 또는 CSV 텍스트)
 app.post("/api/analyze", async (req, res) => {
   try {
-    const { demo, csv } = req.body || {};
+    const { demo, csv, picks } = req.body || {};
     let watched, stats, label, key;
     if (demo) {
       watched = buildDemoWatched();
       stats = { rows: DEMO_HISTORY.reduce((s, h) => s + h[1], 0), titles: watched.length, matched: watched.length, online: 0 };
       label = "데모 시청자 (스릴러·SF·범죄·K-드라마)";
       key = "demo";
+    } else if (Array.isArray(picks) && picks.length) {
+      watched = buildWatchedFromPicks(picks);
+      if (!watched.length) { const e = new Error("고른 작품을 찾지 못했습니다. 다시 선택해 주세요."); e.status = 404; throw e; }
+      stats = { rows: watched.length, titles: watched.length, matched: watched.length, online: 0 };
+      label = `고른 작품 ${watched.length}개 기반`;
+      key = crypto.randomUUID();
     } else if (typeof csv === "string" && csv.trim()) {
       ({ watched, stats } = await buildWatchedFromCsv(csv, API_KEY));
       if (!watched.length) { const e = new Error("시청기록에서 매칭되는 작품을 찾지 못했습니다. (카탈로그를 넓히거나 TMDB 키를 설정해 보세요)"); e.status = 404; throw e; }
       label = "내 넷플릭스 시청기록";
       key = crypto.randomUUID();
     } else {
-      const e = new Error("시청기록 CSV를 업로드하거나 데모 모드를 사용하세요."); e.status = 400; throw e;
+      const e = new Error("작품을 고르거나, 시청기록 CSV를 올리거나, 데모 모드를 사용하세요."); e.status = 400; throw e;
     }
     putCache(key, watched);
     const profile = buildTasteProfile(watched);
@@ -114,10 +144,11 @@ app.post("/api/analyze", async (req, res) => {
 // 2단계: 추천 (질문 답변 반영). 캐시된 시청기록 재사용.
 app.post("/api/recommend", async (req, res) => {
   try {
-    const { key, answers = {}, exclude = [], count = 12, demo, csv } = req.body || {};
+    const { key, answers = {}, exclude = [], count = 12, demo, csv, picks } = req.body || {};
     let watched = getCache(key) || (demo ? getCache("demo") : null);
     if (!watched) {
       if (demo) { watched = buildDemoWatched(); putCache("demo", watched); }
+      else if (Array.isArray(picks) && picks.length) { watched = buildWatchedFromPicks(picks); putCache(key || "tmp", watched); }
       else if (typeof csv === "string" && csv.trim()) { ({ watched } = await buildWatchedFromCsv(csv, API_KEY)); putCache(key || "tmp", watched); }
       else { const e = new Error("세션이 만료되었습니다. 다시 분석해 주세요."); e.status = 440; throw e; }
     }

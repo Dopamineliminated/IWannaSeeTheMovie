@@ -2,7 +2,7 @@
 # 저장소를 Render 에 연결하면 이 파일을 자동으로 읽어 웹 서비스를 만듭니다.
 services:
   - type: web
-    name: iwannaseethemovie
+    name: iwannawatchthemovie
     runtime: node
     plan: free
     buildCommand: npm install
